@@ -40,12 +40,12 @@ tasks:
 - [x] Frontend `/dashboard/generate-image` page with brand picker, template selector, prompt form, and image preview
 - [x] Zustand store updated for image content pieces
 
-## HOUR 5: Publishing & Scheduling
+## ✅ HOUR 5: Publishing & Scheduling (2026-04-28)
 tasks:
-- [ ] Pinterest API v5 integration (OAuth, publish pin)
-- [ ] Blog publishing to WordPress via REST API
-- [ ] Email draft to Mailchimp/SendGrid (optional)
-- [ ] Scheduler: cron-like job queuing (APScheduler or custom)
+- [x] Pinterest API v5 integration (OAuth, publish pin)
+- [x] Blog publishing to WordPress via REST API
+- [ ] Email draft to Mailchimp/SendGrid (optional, deferred)
+- [ ] Scheduler: cron-like job queuing (APScheduler or custom, deferred)
 
 ## HOUR 6: Stripe Billing
 tasks:
