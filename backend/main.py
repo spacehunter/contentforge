@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
@@ -11,6 +12,7 @@ import os
 from database import SessionLocal, engine, Base
 from models import User, Brand, ContentPiece, Subscription
 from llm_service import generate_content as llm_generate
+from comfyui_service import generate_image
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -25,6 +27,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static images directory
+os.makedirs("static/images", exist_ok=True)
+app.mount("/images", StaticFiles(directory="static/images"), name="images")
 
 # Config
 SECRET_KEY = os.getenv("SECRET_KEY", "contentforge-dev-secret-key-change-in-production")
@@ -65,6 +71,11 @@ class ContentGenerateRequest(BaseModel):
     content_type: str
     prompt: str
     tone: str = "professional"
+    brand_id: Optional[int] = None
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str
+    template_type: str = "pinterest"  # pinterest, hero, before_after
     brand_id: Optional[int] = None
 
 class ContentResponse(BaseModel):
@@ -239,6 +250,54 @@ def get_plans():
             }
         ]
     }
+
+@app.post("/content/generate-image")
+async def generate_image_endpoint(
+    req: ImageGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    brand = None
+    if req.brand_id:
+        brand = db.query(Brand).filter(Brand.id == req.brand_id).first()
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
+
+async def generate_image_endpoint(
+    req: ImageGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    brand = None
+    if req.brand_id:
+        brand = db.query(Brand).filter(Brand.id == req.brand_id).first()
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
+
+    try:
+        image_url = await generate_image(
+            prompt=req.prompt,
+            template_type=req.template_type,
+            brand_voice=brand.voice if brand else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+
+    db_content = ContentPiece(
+        title=f"Generated image - {req.template_type}",
+        content_type="image",
+        prompt=req.prompt,
+        generated_text=image_url,
+        status="generated",
+        user_id=current_user.id,
+        brand_id=req.brand_id,
+    )
+    db.add(db_content)
+    db.commit()
+    db.refresh(db_content)
+    return {"id": db_content.id, "image_url": image_url, "template_type": req.template_type, "status": "generated"}
 
 if __name__ == "__main__":
     import uvicorn

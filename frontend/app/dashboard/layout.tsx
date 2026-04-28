@@ -8,6 +8,7 @@ const NAV = [
   { name: 'Dashboard', href: '/dashboard', icon: '📊' },
   { name: 'Brands', href: '/dashboard/brands', icon: '🏢' },
   { name: 'Generate', href: '/dashboard/generate', icon: '✨' },
+  { name: 'Generate Image', href: '/dashboard/generate-image', icon: '🎨' },
   { name: 'Content', href: '/dashboard/content', icon: '📝' },
   { name: 'Analytics', href: '/dashboard/analytics', icon: '📈' },
   { name: 'Settings', href: '/dashboard/settings', icon: '⚙️' },

@@ -29,6 +29,7 @@ export const brands = {
 
 export const content = {
   generate: (data) => api.post('/content/generate', data),
+  generateImage: (data) => api.post('/content/generate-image', data),
   list: () => api.get('/content'),
 };
 
