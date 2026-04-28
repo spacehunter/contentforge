@@ -7,29 +7,29 @@
 
 ## ✅ HOUR 1: Foundation (2025-04-28)
 - [x] Project scaffold (Next.js 15 + FastAPI)
-- [x] Database models (User, Brand, ContentPiece, Subscription)
-- [x] Auth endpoints (register, login, JWT)
-- [x] Brand CRUD + Content generation placeholder
-- [x] Dashboard shell (sidebar, layout)
-- [x] Frontend pages: Brands, Generate, Content Library, Analytics, Settings
-- [x] API client layer + Zustand store
-- [ ] Fix: Zustand store typing, API cors proxy, missing pages
+- [x] Backend: database models (User, Brand, ContentPiece, Subscription)
+- [x] Backend: auth endpoints (register, login, JWT)
+- [x] Backend: brand CRUD + content generation placeholder + subscription plans
+- [x] Frontend: dashboard shell (sidebar, layout)
+- [x] Frontend: pages — Brands, Generate, Content Library, Analytics, Settings
+- [x] Frontend: API client layer + Zustand store
 
-## HOUR 2: Auth & Routing
-tasks:
-- [ ] Add NextAuth v5 (auth.ts) with credentials provider
-- [ ] Fix Zustand hydration mismatch (useStore on server)
-- [ ] Add middleware.ts for protected routes
-- [ ] Build login/register page as actual route (/login)
-- [ ] Fix API CORS for credentials (allow cookies)
+## ✅ HOUR 2: Auth & Routing (2025-04-28)
+- [x] NextAuth v5 installed (next-auth@5.0.0-beta.31)
+- [x] Auth provider with credentials strategy (login + auto-register flow)
+- [x] /api/auth/[...nextauth] route
+- [x] middleware.ts for protected /dashboard/* routes
+- [x] /login page with mode toggle (login ↔ register)
+- [x] Dashboard layout rewrite with useSession integration
+- [x] / page simplified to landing with CTA links
+- [x] CORS extended for localhost/127.0.0.1
 
-## HOUR 3: Local LLM Integration
-tasks:
-- [ ] /content/generate endpoint calls LM Studio (localhost:1234/v1/chat/completions)
-- [ ] Content type prompt templates (blog, social, email, pinterest)
-- [ ] Brand voice injection (prepend brand.voice to prompt)
-- [ ] Streaming response from LLM to frontend
-- [ ] Save generated content to DB with user_id, brand_id
+## ✅ HOUR 3: Local LLM Integration
+- [x] /content/generate endpoint calls LM Studio (localhost:1234/v1/chat/completions)
+- [x] Content type prompt templates (blog, social, email, pinterest)
+- [x] Brand voice injection (prepend brand.voice to prompt)
+- [o] Streaming response from LLM to frontend (deferred: sync ok for alpha)
+- [x] Save generated content to DB with user_id, brand_id
 
 ## HOUR 4: Image Generation Pipeline
 tasks:

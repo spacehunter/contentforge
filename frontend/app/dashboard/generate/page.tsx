@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import useStore from '@/stores';
-import { content } from '@/lib/api';
+import api from '@/lib/api';
 
 const CONTENT_TYPES = [
   { id: 'blog', name: 'Blog Post', icon: '📝' },
@@ -17,19 +17,27 @@ export default function GeneratePage() {
     content_type: 'blog',
     prompt: '',
     tone: 'professional',
+    brand_id: null as number | null,
   });
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [brandsList, setBrandsList] = useState<any[]>([]);
   const addContent = useStore((state) => state.addContent);
 
-  const handleSubmit = async (e) => {
+  useEffect(() => {
+    api.get('/brands').then(res => setBrandsList(res.data)).catch(() => setBrandsList([]));
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await content.generate(form);
+      const payload: any = { ...form };
+      if (!payload.brand_id) delete payload.brand_id;
+      const res = await api.post('/content/generate', payload);
       setResult(res.data);
       addContent(res.data);
-    } catch (err) {
+    } catch (err: any) {
       alert(err.response?.data?.detail || 'Generation failed');
     } finally {
       setLoading(false);
@@ -71,6 +79,20 @@ export default function GeneratePage() {
               </button>
             ))}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Brand</label>
+          <select
+            value={form.brand_id ?? ''}
+            onChange={(e) => setForm({...form, brand_id: e.target.value ? Number(e.target.value) : null})}
+            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+          >
+            <option value="">-- No brand (generic) --</option>
+            {brandsList.map((b) => (
+              <option key={b.id} value={b.id}>{b.name} ({b.industry})</option>
+            ))}
+          </select>
         </div>
 
         <div>

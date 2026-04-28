@@ -1,14 +1,16 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
+from typing import Optional
 import os
 
 from database import SessionLocal, engine, Base
 from models import User, Brand, ContentPiece, Subscription
+from llm_service import generate_content as llm_generate
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -27,7 +29,7 @@ app.add_middleware(
 # Config
 SECRET_KEY = os.getenv("SECRET_KEY", "contentforge-dev-secret-key-change-in-production")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -45,16 +47,38 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    class Config:
+        from_attributes = True
+
 class BrandCreate(BaseModel):
     name: str
     voice: str
     industry: str
     target_audience: str
 
-class ContentCreate(BaseModel):
+class ContentGenerateRequest(BaseModel):
     title: str
     content_type: str
     prompt: str
+    tone: str = "professional"
+    brand_id: Optional[int] = None
+
+class ContentResponse(BaseModel):
+    id: int
+    title: str
+    content_type: str
+    prompt: str
+    generated_text: Optional[str]
+    status: str
+    brand_id: Optional[int]
+    user_id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True
 
 # DB Dependency
 def get_db():
@@ -64,6 +88,7 @@ def get_db():
     finally:
         db.close()
 
+# Token / Auth helpers
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     if expires_delta:
@@ -73,6 +98,26 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def decode_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid authentication credentials")
+
+def get_current_user(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> User:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    token = authorization.replace("Bearer ", "")
+    payload = decode_token(token)
+    email = payload.get("sub")
+    if not email:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
 
 @app.post("/auth/register", response_model=Token)
 def register(user: UserCreate, db: Session = Depends(get_db)):
@@ -127,14 +172,42 @@ def create_brand(brand: BrandCreate, db: Session = Depends(get_db)):
 def list_brands(db: Session = Depends(get_db)):
     return db.query(Brand).all()
 
-@app.post("/content/generate")
-def generate_content(content: ContentCreate, db: Session = Depends(get_db)):
+@app.post("/content/generate", response_model=ContentResponse)
+async def generate_content_endpoint(
+    req: ContentGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Fetch brand if brand_id provided
+    brand = None
+    if req.brand_id:
+        brand = db.query(Brand).filter(Brand.id == req.brand_id).first()
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
+    
+    # Call LLM
+    try:
+        generated_text = await llm_generate(
+            title=req.title,
+            content_type=req.content_type,
+            prompt=req.prompt,
+            tone=req.tone,
+            brand=brand,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
+    
+    # Save to DB
     db_content = ContentPiece(
-        title=content.title,
-        content_type=content.content_type,
-        prompt=content.prompt,
+        title=req.title,
+        content_type=req.content_type,
+        prompt=req.prompt,
+        generated_text=generated_text,
         status="generated",
-        generated_text=f"Sample generated content for: {content.prompt}"
+        user_id=current_user.id,
+        brand_id=req.brand_id,
     )
     db.add(db_content)
     db.commit()
@@ -142,8 +215,11 @@ def generate_content(content: ContentCreate, db: Session = Depends(get_db)):
     return db_content
 
 @app.get("/content")
-def list_content(db: Session = Depends(get_db)):
-    return db.query(ContentPiece).all()
+def list_content(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return db.query(ContentPiece).filter(ContentPiece.user_id == current_user.id).order_by(ContentPiece.created_at.desc()).all()
 
 @app.get("/subscriptions/plans")
 def get_plans():

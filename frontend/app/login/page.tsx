@@ -26,14 +26,23 @@ export default function LoginPage() {
           body: JSON.stringify(form),
         });
         if (!res.ok) throw new Error((await res.json()).detail || 'Registration failed');
-        // auto-login after register
+        const data = await res.json();
+        if (data.access_token) localStorage.setItem('token', data.access_token);
         const loginRes = await signIn('credentials', { email: form.email, password: form.password, redirect: false });
         if (loginRes?.ok) router.push('/dashboard');
         else throw new Error('Auto-login failed');
       } else {
-        const result = await signIn('credentials', { email: form.email, password: form.password, redirect: false });
-        if (result?.error) throw new Error('Invalid email or password');
-        router.push('/dashboard');
+        const res = await fetch(`${API_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: form.email, password: form.password }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'Invalid email or password');
+        const data = await res.json();
+        if (data.access_token) localStorage.setItem('token', data.access_token);
+        const loginRes = await signIn('credentials', { email: form.email, password: form.password, redirect: false });
+        if (loginRes?.ok) router.push('/dashboard');
+        else throw new Error('Login session failed');
       }
     } catch (err: any) {
       setError(err.message);
