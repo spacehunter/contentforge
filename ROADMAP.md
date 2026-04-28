@@ -31,13 +31,14 @@
 - [o] Streaming response from LLM to frontend (deferred: sync ok for alpha)
 - [x] Save generated content to DB with user_id, brand_id
 
-## HOUR 4: Image Generation Pipeline
+## ✅ HOUR 4: Image Generation Pipeline (2026-04-28)
 tasks:
-- [ ] Add `generate_image()` to `backend/llm_service.py` that POSTs a JSON prompt to ComfyUI at `http://localhost:8188/prompt`, waits via `/history`, and returns the output image path.
-- [ ] Add `POST /content/generate-image` endpoint in `backend/main.py` accepting `brand_id`, `prompt`, `template_type` ("pinterest", "hero", "before_after").
-- [ ] Create backend prompt templates for each image type (Pinterest pin = vertical 2:3 + text overlay prompt, hero = wide landscape, before_after = split frame).
-- [ ] Add image storage: save generated images to `backend/static/images/` and serve static files via FastAPI `app.mount("/images", StaticFiles(...), ...)`. Create the static/images dir.
-- [ ] Add an image generation page to the frontend at `frontend/app/dashboard/generate-image/page.tsx` with a form: brand picker, prompt textbox, template selector, and a submit button that displays the returned image URL.
+- [x] Add `POST /content/generate-image` endpoint calling ComfyUI (localhost:8188)
+- [x] Flux/Stable Diffusion workflow with KSampler in `comfyui_service.py`
+- [x] Pinterest pin, hero banner, and before/after templates with dimension presets
+- [x] Image storage: backend saves output to `/images/` static mount
+- [x] Frontend `/dashboard/generate-image` page with brand picker, template selector, prompt form, and image preview
+- [x] Zustand store updated for image content pieces
 
 ## HOUR 5: Publishing & Scheduling
 tasks:
