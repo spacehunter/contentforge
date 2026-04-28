@@ -1,0 +1,137 @@
+'use client';
+
+import { useState } from 'react';
+import useStore from '@/stores';
+import { content } from '@/lib/api';
+
+const CONTENT_TYPES = [
+  { id: 'blog', name: 'Blog Post', icon: '📝' },
+  { id: 'social', name: 'Social Media', icon: '📱' },
+  { id: 'email', name: 'Email Newsletter', icon: '📧' },
+  { id: 'pinterest', name: 'Pinterest Pin', icon: '📌' },
+];
+
+export default function GeneratePage() {
+  const [form, setForm] = useState({
+    title: '',
+    content_type: 'blog',
+    prompt: '',
+    tone: 'professional',
+  });
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const addContent = useStore((state) => state.addContent);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await content.generate(form);
+      setResult(res.data);
+      addContent(res.data);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Generation failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl">
+      <h2 className="text-xl font-bold text-gray-900 mb-4">Generate Content</h2>
+      
+      <form onSubmit={handleSubmit} className="card space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Title</label>
+          <input
+            value={form.title}
+            onChange={(e) => setForm({...form, title: e.target.value})}
+            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+            placeholder="Summer Campaign Blog Post"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Content Type</label>
+          <div className="mt-1 grid grid-cols-2 md:grid-cols-4 gap-3">
+            {CONTENT_TYPES.map((type) => (
+              <button
+                key={type.id}
+                type="button"
+                onClick={() => setForm({...form, content_type: type.id})}
+                className={`flex flex-col items-center p-3 rounded-lg border ${
+                  form.content_type === type.id
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                    : 'border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <span className="text-2xl">{type.icon}</span>
+                <span className="text-sm mt-1">{type.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">What should we write about?</label>
+          <textarea
+            value={form.prompt}
+            onChange={(e) => setForm({...form, prompt: e.target.value})}
+            rows={4}
+            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+            placeholder="Describe the topic, key points, angle..."
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Tone</label>
+          <select
+            value={form.tone}
+            onChange={(e) => setForm({...form, tone: e.target.value})}
+            className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+          >
+            <option value="professional">Professional</option>
+            <option value="casual">Casual</option>
+            <option value="playful">Playful</option>
+            <option value="authoritative">Authoritative</option>
+            <option value="friendly">Friendly</option>
+          </select>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 disabled:opacity-50"
+        >
+          {loading ? 'Generating...' : '✨ Generate Content'}
+        </button>
+      </form>
+
+      {result && (
+        <div className="mt-6 card">
+          <h3 className="font-semibold text-lg mb-2">Generated: {result.title}</h3>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <pre className="text-sm text-gray-800 whitespace-pre-wrap" style={{fontFamily: 'system-ui'}}>
+              {result.generated_text}
+            </pre>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700">
+              Publish Now
+            </button>
+            <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+              Schedule
+            </button>
+            <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
+              Regenerate
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export const metadata = { title: 'Generate - ContentForge' };
