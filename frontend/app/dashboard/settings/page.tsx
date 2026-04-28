@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 export default function SettingsPage() {
   return (
@@ -74,4 +75,3 @@ export default function SettingsPage() {
   );
 }
 
-export const metadata = { title: 'Settings - ContentForge' };

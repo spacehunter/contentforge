@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState } from 'react';
 import useStore from '@/stores';
@@ -99,4 +100,3 @@ export default function BrandsPage() {
   );
 }
 
-export const metadata = { title: 'Brands - ContentForge' };

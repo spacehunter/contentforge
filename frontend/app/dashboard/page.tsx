@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useRouter } from 'next/navigation';
 import useStore from '@/stores';
@@ -66,4 +67,3 @@ export default function DashboardRoute() {
   );
 }
 
-export const metadata = { title: 'Dashboard - ContentForge' };

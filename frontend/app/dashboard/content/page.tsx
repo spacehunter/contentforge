@@ -1,9 +1,10 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import useStore from '@/stores';
 
 export default function ContentPage() {
-  const content = useStore((state) => state.content);
+  const content = useStore((state) => state.contents);
 
   return (
     <div>
@@ -41,4 +42,3 @@ export default function ContentPage() {
   );
 }
 
-export const metadata = { title: 'Content Library - ContentForge' };

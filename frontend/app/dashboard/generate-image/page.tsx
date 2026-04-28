@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import useStore from '@/stores';
@@ -134,4 +135,3 @@ export default function GenerateImagePage() {
   );
 }
 
-export const metadata = { title: 'Generate Image - ContentForge' };

@@ -13,6 +13,12 @@ node_modules/
 .dev/
 *.log
 
+# Generated media (don't commit AI outputs)
+backend/static/images/*.png
+backend/static/images/*.jpg
+backend/static/images/*.jpeg
+backend/static/images/*.webp
+
 # Databases
 data/
 *.db

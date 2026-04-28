@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState } from 'react';
 
@@ -88,4 +89,3 @@ export default function AnalyticsPage() {
   );
 }
 
-export const metadata = { title: 'Analytics - ContentForge' };
