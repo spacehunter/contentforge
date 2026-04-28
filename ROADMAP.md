@@ -33,11 +33,11 @@
 
 ## HOUR 4: Image Generation Pipeline
 tasks:
-- [ ] /content/generate-image endpoint calls ComfyUI (localhost:8188)
-- [ ] Flux/Stable Diffusion workflow for marketing images
-- [ ] Pinterest pin layout generation (2:3 vertical + branded text)
-- [ ] Before/after style layouts for home services
-- [ ] Image storage (save to ./contentforge/static/images, serve via nginx or static)
+- [ ] Add `generate_image()` to `backend/llm_service.py` that POSTs a JSON prompt to ComfyUI at `http://localhost:8188/prompt`, waits via `/history`, and returns the output image path.
+- [ ] Add `POST /content/generate-image` endpoint in `backend/main.py` accepting `brand_id`, `prompt`, `template_type` ("pinterest", "hero", "before_after").
+- [ ] Create backend prompt templates for each image type (Pinterest pin = vertical 2:3 + text overlay prompt, hero = wide landscape, before_after = split frame).
+- [ ] Add image storage: save generated images to `backend/static/images/` and serve static files via FastAPI `app.mount("/images", StaticFiles(...), ...)`. Create the static/images dir.
+- [ ] Add an image generation page to the frontend at `frontend/app/dashboard/generate-image/page.tsx` with a form: brand picker, prompt textbox, template selector, and a submit button that displays the returned image URL.
 
 ## HOUR 5: Publishing & Scheduling
 tasks:
