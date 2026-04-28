@@ -116,14 +116,17 @@ export default function GenerateImagePage() {
             />
           </div>
           <div className="mt-4 flex gap-2">
-            <button className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700">
+            <button 
+              onClick={() => window.location.href = '/dashboard/content'}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700"
+            >
               Publish Now
             </button>
             <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50">
               Schedule
             </button>
             <button 
-              onClick={() => handleSubmit}
+              onClick={() => setResult(null)}
               className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
             >
               Regenerate

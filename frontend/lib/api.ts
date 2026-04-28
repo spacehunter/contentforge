@@ -10,9 +10,15 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (typeof window !== 'undefined') {
+    let token = localStorage.getItem('token');
+    // Fallback: try sessionStorage or any stored auth token
+    if (!token) {
+      token = sessionStorage.getItem('token');
+    }
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
   }
   return config;
 });

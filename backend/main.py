@@ -13,6 +13,15 @@ from database import SessionLocal, engine, Base
 from models import User, Brand, ContentPiece, Subscription
 from llm_service import generate_content as llm_generate
 from comfyui_service import generate_image
+from pinterest_service import (
+    get_oauth_url,
+    exchange_code,
+    list_boards,
+    create_pin,
+    get_user,
+    delete_pin,
+)
+from wordpress_service import publish_post, list_posts, test_connection
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -263,17 +272,6 @@ async def generate_image_endpoint(
         if not brand:
             raise HTTPException(status_code=404, detail="Brand not found")
 
-async def generate_image_endpoint(
-    req: ImageGenerateRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    brand = None
-    if req.brand_id:
-        brand = db.query(Brand).filter(Brand.id == req.brand_id).first()
-        if not brand:
-            raise HTTPException(status_code=404, detail="Brand not found")
-
     try:
         image_url = await generate_image(
             prompt=req.prompt,
@@ -298,6 +296,200 @@ async def generate_image_endpoint(
     db.commit()
     db.refresh(db_content)
     return {"id": db_content.id, "image_url": image_url, "template_type": req.template_type, "status": "generated"}
+
+## Pinterest OAuth & Publishing Routes
+class PinterestConnect(BaseModel):
+    code: str
+
+class PinterestPinCreate(BaseModel):
+    content_id: int
+    board_id: str
+    title: str
+    description: str
+    link: str = ""
+
+@app.get("/pinterest/auth-url")
+def pinterest_auth_url(current_user: User = Depends(get_current_user)):
+    """Return the OAuth URL to start Pinterest authorization."""
+    if not get_oauth_url(""):
+        raise HTTPException(status_code=500, detail="Pinterest OAuth not configured")
+    state = str(current_user.id)
+    return {"auth_url": get_oauth_url(state)}
+
+@app.post("/pinterest/connect")
+async def pinterest_connect(
+    payload: PinterestConnect,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Exchange authorization code and store access token."""
+    try:
+        token_data = await exchange_code(payload.code)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Pinterest token exchange failed: {str(e)}")
+    
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Pinterest did not return access_token")
+
+    current_user.pinterest_access_token = access_token
+    db.commit()
+    db.refresh(current_user)
+    return {"connected": True, "account": token_data.get("scope", "")}
+
+@app.get("/pinterest/boards")
+async def pinterest_boards(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List boards of the connected Pinterest account."""
+    if not current_user.pinterest_access_token:
+        raise HTTPException(status_code=400, detail="Pinterest not connected. Connect first.")
+    try:
+        boards = await list_boards(current_user.pinterest_access_token)
+        return {"boards": boards}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pinterest boards fetch failed: {str(e)}")
+
+@app.get("/pinterest/me")
+async def pinterest_me(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the connected Pinterest user's profile."""
+    if not current_user.pinterest_access_token:
+        raise HTTPException(status_code=400, detail="Pinterest not connected. Connect first.")
+    try:
+        user = await get_user(current_user.pinterest_access_token)
+        return {"user": user}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pinterest user fetch failed: {str(e)}")
+
+@app.post("/pinterest/pin")
+async def pinterest_pin_publish(
+    req: PinterestPinCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Publish a piece of content as a Pinterest Pin."""
+    # Verify Pinterest is connected
+    if not current_user.pinterest_access_token:
+        raise HTTPException(status_code=400, detail="Pinterest not connected")
+    
+    # Fetch the content piece
+    content = db.query(ContentPiece).filter(ContentPiece.id == req.content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content piece not found")
+    if content.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your content")
+    
+    # Need an image_url for a pin
+    image_url = content.image_url or (content.generated_text if content.content_type == "image" else None)
+    if not image_url:
+        raise HTTPException(status_code=400, detail="Content has no image URL to pin")
+    
+    # Ensure absolute URL
+    if image_url.startswith("/"):
+        image_url = f"http://localhost:8000{image_url}"
+
+    try:
+        pin_result = await create_pin(
+            access_token=current_user.pinterest_access_token,
+            board_id=req.board_id,
+            title=req.title or content.title,
+            description=req.description,
+            link=req.link,
+            image_url=image_url,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Pinterest pin creation failed: {str(e)}")
+    
+    # Update content status
+    content.status = "published"
+    content.published_at = datetime.utcnow()
+    db.commit()
+    db.refresh(content)
+    
+    return {
+        "id": content.id,
+        "pinterest_pin_id": pin_result.get("id"),
+        "pinterest_url": f"https://pinterest.com/pin/{pin_result.get('id')}",
+        "status": "published",
+    }
+
+## WordPress Publishing Routes
+class WordPressConnect(BaseModel):
+    site_url: str
+    username: str
+    app_password: str
+
+class WordPressPublishRequest(BaseModel):
+    content_id: int
+    wp_site_url: Optional[str] = None
+    wp_username: Optional[str] = None
+    wp_app_password: Optional[str] = None
+    status: str = "draft"  # 'publish' or 'draft'
+
+@app.post("/wordpress/test")
+async def wordpress_test_connection(
+    req: WordPressConnect,
+    current_user: User = Depends(get_current_user),
+):
+    """Test WordPress connection with Application Passwords."""
+    try:
+        me = await test_connection(req.site_url, req.username, req.app_password)
+        return {"connected": True, "user": me.get("name"), "slug": me.get("slug")}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"WordPress connection failed: {str(e)}")
+
+@app.post("/wordpress/publish")
+async def wordpress_publish(
+    req: WordPressPublishRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Publish a content piece to WordPress."""
+    content = db.query(ContentPiece).filter(ContentPiece.id == req.content_id).first()
+    if not content:
+        raise HTTPException(status_code=404, detail="Content piece not found")
+    if content.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your content")
+
+    # Only text content can be blog posts
+    if content.content_type not in ("blog", "social", "email"):
+        raise HTTPException(status_code=400, detail="Content type must be blog/social/email to publish to WordPress")
+
+    wp_url = req.wp_site_url or os.getenv("WP_DEFAULT_SITE_URL")
+    wp_user = req.wp_username or os.getenv("WP_DEFAULT_USERNAME")
+    wp_pass = req.wp_app_password or os.getenv("WP_DEFAULT_APP_PASSWORD")
+
+    if not all([wp_url, wp_user, wp_pass]):
+        raise HTTPException(status_code=400, detail="WordPress credentials not provided. Supply wp_site_url, wp_username, wp_app_password or set env vars.")
+
+    try:
+        post = await publish_post(
+            wp_base_url=wp_url,
+            wp_username=wp_user,
+            wp_app_password=wp_pass,
+            title=content.title,
+            content=content.generated_text or content.prompt,
+            status=req.status,
+            excerpt=content.prompt[:200] if content.prompt else "",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"WordPress publish failed: {str(e)}")
+
+    content.status = "published" if req.status == "publish" else "draft"
+    content.published_at = datetime.utcnow()
+    db.commit()
+    db.refresh(content)
+
+    return {
+        "id": content.id,
+        "wordpress_post_id": post.get("id"),
+        "wordpress_url": post.get("link"),
+        "status": content.status,
+    }
 
 if __name__ == "__main__":
     import uvicorn

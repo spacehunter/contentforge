@@ -6,6 +6,7 @@ export interface ContentPiece {
   content_type: string;
   prompt: string;
   generated_text?: string;
+  image_url?: string;
   status: string;
   brand_id?: number;
   user_id: number;
