@@ -23,6 +23,7 @@ export default function GeneratePage() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [brandsList, setBrandsList] = useState<any[]>([]);
+  const [planError, setPlanError] = useState<string | null>(null);
   const addContent = useStore((state) => state.addContent);
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export default function GeneratePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setPlanError(null);
     try {
       const payload: any = { ...form };
       if (!payload.brand_id) delete payload.brand_id;
@@ -39,7 +41,12 @@ export default function GeneratePage() {
       setResult(res.data);
       addContent(res.data);
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Generation failed');
+      const msg = err.response?.data?.detail || 'Generation failed';
+      if (msg.toLowerCase().includes('plan limit') || msg.toLowerCase().includes('upgrade')) {
+        setPlanError(msg);
+      } else {
+        alert(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -49,6 +56,26 @@ export default function GeneratePage() {
     <div className="max-w-2xl">
       <h2 className="text-xl font-bold text-gray-900 mb-4">Generate Content</h2>
       
+      {planError && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-sm text-red-700 font-medium">{planError}</p>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={() => window.location.href = '/dashboard/settings'}
+              className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-indigo-700"
+            >
+              Upgrade Plan
+            </button>
+            <button
+              onClick={() => setPlanError(null)}
+              className="bg-white border border-gray-300 text-gray-700 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-50"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="card space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700">Title</label>
