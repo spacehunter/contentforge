@@ -77,7 +77,7 @@ tasks:
 - [x] **Waitlist landing page (public, no auth)** — Rewrite `frontend/app/page.tsx` with waitlist form, features grid, pricing cards. Add `POST /waitlist`, `GET /waitlist/count`, `GET /waitlist/admin` to `backend/main.py`. Add `WaitlistEntry` model to `backend/models.py`.
 - [x] **Email automation: welcome + content tips** — Add `email_service.py` using local SMTP or SendGrid. Trigger welcome email on `/auth/register`. Trigger "content tip" weekly email to all users with `is_active=True`.
 - [x] **Affiliate / referral code system** — Add `referral_code` to `User` model. Create `/referral/track` endpoint. Give referrer 10 bonus pieces when referred user signs up. Frontend: settings page shows referral link + stats; login page accepts optional referral code.
-- [ ] **Demo mode: generate 3 pieces free, then paywall** — Check `plan_id` in `enforce_plan_limit`. Free gets 1 brand, 3 pieces. Show upgrade modal in dashboard after hitting limit.
+- [x] **Demo mode: generate 3 pieces free, then paywall** — Check `plan_id` in `enforce_plan_limit`. Free gets 1 brand, 3 pieces. Show upgrade modal in dashboard after hitting limit.
 - [ ] **Documentation site (/docs)** — Add `/docs` static route with markdown pages: Quick Start, API Reference, Brand Voice Guide. Use `rehype-remark` or plain HTML.
 
 ## BLOCKERS
