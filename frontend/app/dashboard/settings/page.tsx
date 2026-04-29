@@ -16,10 +16,12 @@ export default function SettingsPage() {
   const [plan, setPlan] = useState('free');
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingMsg, setBillingMsg] = useState('');
+  const [referral, setReferral] = useState<any>(null);
 
   useEffect(() => {
     checkPinterestStatus();
     fetchBilling();
+    fetchReferral();
   }, []);
 
   const checkPinterestStatus = async () => {
@@ -31,6 +33,15 @@ export default function SettingsPage() {
       setBoards(bRes.data.boards || []);
     } catch {
       setPinterestConnected(false);
+    }
+  };
+
+  const fetchReferral = async () => {
+    try {
+      const res = await api.get('/referral/info');
+      setReferral(res.data);
+    } catch {
+      setReferral(null);
     }
   };
 
@@ -257,6 +268,34 @@ export default function SettingsPage() {
               </div>
             )}
           </div>
+        </div>
+        {/* Referrals */}
+        <div className="card">
+          <h3 className="text-lg font-semibold mb-4">Referrals</h3>
+          {referral ? (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">Share your link to earn <strong>10 bonus content pieces</strong> per friend who signs up and generates their first piece.</p>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={referral.referral_link || ''}
+                  className="flex-1 rounded-lg border border-gray-300 px-3 py-2 bg-gray-50 text-sm"
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(referral.referral_link).then(() => alert('Copied!'))}
+                  className="bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-indigo-700"
+                >
+                  Copy
+                </button>
+              </div>
+              <div className="flex gap-4 text-sm text-gray-600">
+                <span><strong>{referral.referrals || 0}</strong> referrals</span>
+                <span><strong>{referral.bonus_pieces || 0}</strong> bonus pieces earned</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">Loading referral info…</p>
+          )}
         </div>
       </div>
     </div>

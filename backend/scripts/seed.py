@@ -3,7 +3,7 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime, timedelta
 from database import SessionLocal, Base, engine
@@ -29,6 +29,7 @@ def seed():
         hashed_password=pwd_context.hash("demo123"),
         name="Demo User",
         is_active=True,
+        referral_code="DEMO2024",
         created_at=datetime.utcnow(),
     )
     db.add(demo_user)

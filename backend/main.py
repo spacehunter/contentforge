@@ -66,6 +66,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
     name: str
+    referral_code: Optional[str] = None  # referrer's code during signup
 
 class UserLogin(BaseModel):
     email: str
@@ -162,12 +163,22 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     db_user = User(
         email=user.email,
         hashed_password=hashed_password,
-        name=user.name
+        name=user.name,
+        referral_code=generate_referral_code(db),
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    
+
+    # If this user was referred, credit the referrer
+    if user.referral_code:
+        referrer = db.query(User).filter(User.referral_code == user.referral_code).first()
+        if referrer:
+            db_user.referred_by = referrer.id
+            referrer.bonus_pieces = (referrer.bonus_pieces or 0) + 10
+            db.commit()
+            db.refresh(db_user)
+
     access_token = create_access_token(
         data={"sub": db_user.email},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -642,13 +653,35 @@ def get_user_plan(db: Session, user: User) -> str:
         return "free"
     return sub.plan_id
 
-def enforce_plan_limit(db: Session, user: User, plan_id: str, generation_type: str = "content"):
-    """Raise HTTPException if user has exceeded their plan limits."""
+import random, string
+
+def generate_referral_code(db: Session, length: int = 8) -> str:
+    """Generate a unique referral code."""
+    chars = string.ascii_uppercase + string.digits
+    for _ in range(10):
+        code = "".join(random.choices(chars, k=length))
+        if not db.query(User).filter(User.referral_code == code).first():
+            return code
+    raise RuntimeError("Could not generate unique referral code")
+
+def get_user_plan(db: Session, user: User) -> str:
+    """Return 'free', 'starter', 'pro', or 'enterprise' based on active Stripe sub."""
+    if not user.stripe_customer_id:
+        return "free"
+    sub = db.query(Subscription).filter(
+        Subscription.user_id == user.id,
+        Subscription.status == "active"
+    ).first()
+    if not sub:
+        return "free"
+    return sub.plan_id
+
+def enforce_plan_limit(db, user, plan_id, generation_type="content"):
     limits = {
-        "free": {"brands": 1, "pieces": 3, "images": 0},  # free has 1 brand and 3 pieces total
-        "starter": {"brands": 5, "pieces": 100, "images": 0},
+        "free": {"brands": 1, "pieces": 3 + (user.bonus_pieces or 0), "images": 0},
+        "starter": {"brands": 5, "pieces": 100 + (user.bonus_pieces or 0), "images": 0},
         "pro": {"brands": -1, "pieces": -1, "images": -1},
-    }.get(plan_id, {"brands": 1, "pieces": 3, "images": 0})
+    }.get(plan_id, {"brands": 1, "pieces": 3 + (user.bonus_pieces or 0), "images": 0})
 
     # Count brands owned
     if limits["brands"] >= 0:
@@ -784,6 +817,42 @@ def waitlist_join(req: WaitlistRequest, db: Session = Depends(get_db)):
 @app.get("/waitlist/count")
 def waitlist_count(db: Session = Depends(get_db)):
     return {"count": db.query(WaitlistEntry).count()}
+
+# ─── Referrals ───
+class ReferralTrack(BaseModel):
+    referral_code: str
+
+@app.get("/referral/info")
+def get_referral_info(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the current user's referral code and stats."""
+    referrals = db.query(User).filter(User.referred_by == current_user.id).count()
+    total_bonus = (current_user.bonus_pieces or 0)
+    return {
+        "referral_code": current_user.referral_code,
+        "referrals": referrals,
+        "bonus_pieces": total_bonus,
+        "referral_link": f"http://localhost:3000/login?ref={current_user.referral_code}",
+    }
+
+@app.get("/referral/leaderboard")
+def get_referral_leaderboard(db: Session = Depends(get_db)):
+    """Simple public leaderboard of top referrers."""
+    top_users = db.query(User).filter(User.bonus_pieces > 0).order_by(User.bonus_pieces.desc()).limit(10).all()
+    return [
+        {"id": u.id, "name": u.name, "bonus_pieces": u.bonus_pieces}
+        for u in top_users
+    ]
+
+@app.post("/referral/track")
+def track_referral(req: ReferralTrack, db: Session = Depends(get_db)):
+    """Validate a referral code (called before signup)."""
+    referrer = db.query(User).filter(User.referral_code == req.referral_code).first()
+    if not referrer:
+        raise HTTPException(status_code=404, detail="Invalid referral code")
+    return {"valid": True, "referrer_id": referrer.id, "referrer_name": referrer.name}
 
 @app.get("/waitlist/admin")
 def waitlist_list(admin_key: str = Header(None), db: Session = Depends(get_db)):

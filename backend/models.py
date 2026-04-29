@@ -12,6 +12,9 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     stripe_customer_id = Column(String, nullable=True)
     pinterest_access_token = Column(String, nullable=True)
+    referral_code = Column(String, unique=True, index=True, nullable=True)
+    referred_by = Column(Integer, nullable=True)
+    bonus_pieces = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Brand(Base):

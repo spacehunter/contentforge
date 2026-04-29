@@ -1,13 +1,15 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const initialRef = searchParams?.get('ref') || '';
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [form, setForm] = useState({ email: '', password: '', name: '' });
+  const [form, setForm] = useState({ email: '', password: '', name: '', referral_code: initialRef });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -73,6 +75,18 @@ export default function LoginPage() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
                 required
+              />
+            </div>
+          )}
+          {mode === 'register' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Referral Code (optional)</label>
+              <input
+                type="text"
+                value={form.referral_code}
+                onChange={(e) => setForm({ ...form, referral_code: e.target.value })}
+                placeholder="ABCD1234"
+                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
           )}
