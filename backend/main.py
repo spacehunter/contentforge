@@ -23,6 +23,8 @@ from pinterest_service import (
 )
 from wordpress_service import publish_post, list_posts, test_connection
 
+from email_service import send_welcome_email, send_content_tip_email
+
 try:
     from stripe_service import (
         create_checkout_session,
@@ -154,7 +156,7 @@ def get_current_user(authorization: Optional[str] = Header(None), db: Session = 
     return user
 
 @app.post("/auth/register", response_model=Token)
-def register(user: UserCreate, db: Session = Depends(get_db)):
+def register(user: UserCreate, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -183,6 +185,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         data={"sub": db_user.email},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
+    background_tasks.add_task(send_welcome_email, user.email, user.name)
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.post("/auth/login", response_model=Token)
@@ -863,6 +866,37 @@ def waitlist_list(admin_key: str = Header(None), db: Session = Depends(get_db)):
         {"id": e.id, "email": e.email, "name": e.name, "source": e.source, "created_at": e.created_at.isoformat()}
         for e in entries
     ]
+
+# ─── Admin / Maintenance ───
+@app.get("/admin/email-queue")
+def email_queue_status(admin_key: str = Header(None)):
+    """Return the contents of the mail log for admin review."""
+    if os.getenv("ADMIN_KEY", "dev-only") != admin_key:
+        raise HTTPException(status_code=401, detail="Invalid admin key")
+    import json
+    lines = []
+    try:
+        with open(".dev/mail.log") as f:
+            for line in f:
+                lines.append(json.loads(line))
+    except FileNotFoundError:
+        pass
+    return {"emails": lines}
+
+@app.post("/admin/send-tips")
+def send_weekly_tips(admin_key: str = Header(None), db: Session = Depends(get_db)):
+    """Trigger weekly content tip emails to all active users. Admin only."""
+    if os.getenv("ADMIN_KEY", "dev-only") != admin_key:
+        raise HTTPException(status_code=401, detail="Invalid admin key")
+    import json
+    users = db.query(User).filter(User.is_active == True).all()
+    results = []
+    # Load a simple local tip file or default
+    tip = "Try repurposing your top-performing blog post into a Pinterest pin this week!"
+    for u in users:
+        res = send_content_tip_email(u.email, u.name, tip)
+        results.append({"email": u.email, "status": res})
+    return {"sent": len(results), "results": results}
 
 if __name__ == "__main__":
     import uvicorn
