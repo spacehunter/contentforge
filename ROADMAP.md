@@ -71,23 +71,17 @@ tasks:
 - [x] Seed script: demo user + demo brand
 - [ ] GitHub repo push + README for reproducibility
 
-## HOUR 9+: Growth / Monetization
+## HOUR 9: Growth / Monetization
+
 tasks:
-- [ ] Waitlist landing page (public, no auth)
-- [ ] Email automation: welcome + content tips
-- [ ] Affiliate / referral code system
-- [ ] Demo mode: generate 3 pieces free, then paywall
-- [ ] Documentation site (/docs)
+- [x] **Waitlist landing page (public, no auth)** — Rewrite `frontend/app/page.tsx` with waitlist form, features grid, pricing cards. Add `POST /waitlist`, `GET /waitlist/count`, `GET /waitlist/admin` to `backend/main.py`. Add `WaitlistEntry` model to `backend/models.py`.
+- [ ] **Email automation: welcome + content tips** — Add `email_service.py` using local SMTP or SendGrid. Trigger welcome email on `/auth/register`. Trigger "content tip" weekly email to all users with `is_active=True`.
+- [ ] **Affiliate / referral code system** — Add `referral_code` to `User` model. Create `/referral/track` endpoint. Give referrer 10 bonus pieces when referred user generates first content.
+- [ ] **Demo mode: generate 3 pieces free, then paywall** — Check `plan_id` in `enforce_plan_limit`. Free gets 1 brand, 3 pieces. Show upgrade modal in dashboard after hitting limit.
+- [ ] **Documentation site (/docs)** — Add `/docs` static route with markdown pages: Quick Start, API Reference, Brand Voice Guide. Use `rehype-remark` or plain HTML.
 
----
-
-## Revenue Model
-| Plan     | Price     | Limits                        |
-|----------|-----------|------------------------------|
-| Free     | $0        | 3 pieces total (trial)      |
-| Starter  | $49/mo    | 5 brands, 100 pieces/mo      |
-| Pro      | $149/mo   | Unlimited brands + content   |
-| Enterprise| Custom   | White-label + API access     |
+## BLOCKERS
+- None
 
 ## Next Actions (Auto-Dev)
 Each hour reads ROADMAP.md top, executes next un-[ ] task, commits git.

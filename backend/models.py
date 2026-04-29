@@ -51,3 +51,13 @@ class Subscription(Base):
     amount = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=True)
+
+class WaitlistEntry(Base):
+    __tablename__ = "waitlist"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True)
+    name = Column(String, nullable=True)
+    source = Column(String, nullable=True, default="landing")
+    converted_to_user = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

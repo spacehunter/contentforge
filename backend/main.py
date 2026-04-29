@@ -10,7 +10,7 @@ from typing import Optional
 import os
 
 from database import SessionLocal, engine, Base
-from models import User, Brand, ContentPiece, Subscription
+from models import User, Brand, ContentPiece, Subscription, WaitlistEntry
 from llm_service import generate_content as llm_generate
 from comfyui_service import generate_image
 from pinterest_service import (
@@ -762,3 +762,39 @@ def get_analytics(
         ],
     }
 
+
+# ─── Waitlist (public, no auth) ───
+class WaitlistRequest(BaseModel):
+    email: str
+    name: Optional[str] = None
+    source: Optional[str] = "landing"
+
+@app.post("/waitlist")
+def waitlist_join(req: WaitlistRequest, db: Session = Depends(get_db)):
+    existing = db.query(WaitlistEntry).filter(WaitlistEntry.email == req.email).first()
+    if existing:
+        return {"message": "Already on the waitlist", "position": existing.id}
+    entry = WaitlistEntry(email=req.email, name=req.name, source=req.source)
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    total = db.query(WaitlistEntry).count()
+    return {"message": "Joined waitlist", "position": total}
+
+@app.get("/waitlist/count")
+def waitlist_count(db: Session = Depends(get_db)):
+    return {"count": db.query(WaitlistEntry).count()}
+
+@app.get("/waitlist/admin")
+def waitlist_list(admin_key: str = Header(None), db: Session = Depends(get_db)):
+    if os.getenv("ADMIN_KEY", "dev-only") != admin_key:
+        raise HTTPException(status_code=401, detail="Invalid admin key")
+    entries = db.query(WaitlistEntry).order_by(WaitlistEntry.created_at.desc()).limit(100).all()
+    return [
+        {"id": e.id, "email": e.email, "name": e.name, "source": e.source, "created_at": e.created_at.isoformat()}
+        for e in entries
+    ]
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
