@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
-import api from '@/lib/api';
+import api, { billing } from '@/lib/api';
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -12,20 +12,14 @@ export default function SettingsPage() {
   const [boards, setBoards] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Check for OAuth callback code in URL (after redirect back from Pinterest)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const state = params.get('state');
-    if (code) {
-      handleOAuthCallback(code);
-      // Clean URL
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
+  // Billing state
+  const [plan, setPlan] = useState('free');
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingMsg, setBillingMsg] = useState('');
 
   useEffect(() => {
     checkPinterestStatus();
+    fetchBilling();
   }, []);
 
   const checkPinterestStatus = async () => {
@@ -39,6 +33,73 @@ export default function SettingsPage() {
       setPinterestConnected(false);
     }
   };
+
+  const fetchBilling = async () => {
+    try {
+      const res = await billing.subscription();
+      const data = res.data;
+      if (data && data.plan_id && data.status !== 'none') {
+        setPlan(data.plan_id);
+      } else {
+        setPlan('free');
+      }
+    } catch {
+      setPlan('free');
+    }
+  };
+
+  const handleCheckout = async (plan_id: string) => {
+    setBillingLoading(true);
+    setBillingMsg('');
+    try {
+      const res = await billing.checkout(plan_id);
+      if (res.data.checkout_url) {
+        window.location.href = res.data.checkout_url;
+      }
+    } catch (err: any) {
+      setBillingMsg(err.response?.data?.detail || 'Checkout failed');
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  const openPortal = async () => {
+    setBillingLoading(true);
+    try {
+      const res = await billing.portal();
+      if (res.data.portal_url) {
+        window.location.href = res.data.portal_url;
+      }
+    } catch (err: any) {
+      setBillingMsg(err.response?.data?.detail || 'Portal failed');
+    } finally {
+      setBillingLoading(false);
+    }
+  };
+
+  // Check for OAuth callback code in URL (after redirect back from Pinterest)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      handleOAuthCallback(code);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // Check for checkout success/cancel
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout') === 'success') {
+      setBillingMsg('Subscription activated!');
+      fetchBilling();
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (params.get('checkout') === 'cancel') {
+      setBillingMsg('Checkout cancelled.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const handleOAuthCallback = async (code: string) => {
     setLoading(true);
@@ -151,12 +212,50 @@ export default function SettingsPage() {
         {/* Subscription */}
         <div className="card">
           <h3 className="text-lg font-semibold mb-4">Subscription</h3>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Current Plan: Free</p>
-              <p className="text-sm text-gray-500">Upgrade to unlock unlimited content generation</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Current Plan: <span className="capitalize">{plan}</span></p>
+                <p className="text-sm text-gray-500">
+                  {plan === 'pro'
+                    ? 'You have unlimited access. Thank you!'
+                    : plan === 'starter'
+                    ? 'You are on the Starter plan.'
+                    : 'Upgrade to unlock unlimited content generation'}
+                </p>
+              </div>
+              {plan === 'free' ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleCheckout('starter')}
+                    disabled={billingLoading}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {billingLoading ? '…' : 'Upgrade Starter'}
+                  </button>
+                  <button
+                    onClick={() => handleCheckout('pro')}
+                    disabled={billingLoading}
+                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {billingLoading ? '…' : 'Upgrade Pro'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={openPortal}
+                  disabled={billingLoading}
+                  className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 disabled:opacity-50"
+                >
+                  {billingLoading ? '…' : 'Manage Billing'}
+                </button>
+              )}
             </div>
-            <button className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700">Upgrade to Pro</button>
+            {billingMsg && (
+              <div className={`text-sm px-3 py-2 rounded-lg ${billingMsg.includes('activated') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                {billingMsg}
+              </div>
+            )}
           </div>
         </div>
       </div>

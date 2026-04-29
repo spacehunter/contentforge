@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -22,6 +22,19 @@ from pinterest_service import (
     delete_pin,
 )
 from wordpress_service import publish_post, list_posts, test_connection
+
+try:
+    from stripe_service import (
+        create_checkout_session,
+        get_or_create_customer,
+        construct_event,
+        get_subscription_info,
+        create_portal_session,
+        PLAN_HIERARCHY,
+    )
+    STRIPE_ENABLED = True
+except Exception:
+    STRIPE_ENABLED = False
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -181,16 +194,18 @@ def health_check():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
 
 @app.post("/brands")
-def create_brand(brand: BrandCreate, db: Session = Depends(get_db)):
-    db_brand = Brand(**brand.dict())
+def create_brand(brand: BrandCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    plan = get_user_plan(db, current_user)
+    enforce_plan_limit(db, current_user, plan, generation_type="brand")
+    db_brand = Brand(**brand.dict(), user_id=current_user.id)
     db.add(db_brand)
     db.commit()
     db.refresh(db_brand)
     return db_brand
 
 @app.get("/brands")
-def list_brands(db: Session = Depends(get_db)):
-    return db.query(Brand).all()
+def list_brands(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Brand).filter(Brand.user_id == current_user.id).all()
 
 @app.post("/content/generate", response_model=ContentResponse)
 async def generate_content_endpoint(
@@ -198,6 +213,8 @@ async def generate_content_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    plan = get_user_plan(db, current_user)
+    enforce_plan_limit(db, current_user, plan, generation_type="content")
     # Fetch brand if brand_id provided
     brand = None
     if req.brand_id:
@@ -266,6 +283,8 @@ async def generate_image_endpoint(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    plan = get_user_plan(db, current_user)
+    enforce_plan_limit(db, current_user, plan, generation_type="image")
     brand = None
     if req.brand_id:
         brand = db.query(Brand).filter(Brand.id == req.brand_id).first()
@@ -491,6 +510,255 @@ async def wordpress_publish(
         "status": content.status,
     }
 
+# ─── Stripe Billing ───
+class CheckoutRequest(BaseModel):
+    plan_id: str  # "starter" or "pro"
+
+class BillingInfo(BaseModel):
+    stripe_customer_id: Optional[str] = None
+
+@app.post("/billing/checkout")
+def create_checkout(
+    req: CheckoutRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create a Stripe Checkout Session for subscription."""
+    try:
+        customer_id = get_or_create_customer(
+            email=current_user.email,
+            name=current_user.name,
+            stripe_customer_id=current_user.stripe_customer_id,
+        )
+        current_user.stripe_customer_id = customer_id
+        db.commit()
+        session = create_checkout_session(
+            customer_id=customer_id,
+            plan_id=req.plan_id,
+            success_url=os.getenv("NEXT_PUBLIC_APP_URL", "http://localhost:3000") + "/dashboard/settings?checkout=success",
+            cancel_url=os.getenv("NEXT_PUBLIC_APP_URL", "http://localhost:3000") + "/dashboard/settings?checkout=cancel",
+        )
+        return {"checkout_url": session.url, "session_id": session.id}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stripe checkout failed: {str(e)}")
+
+@app.get("/billing/subscription")
+def get_billing_subscription(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return current subscription info from Stripe."""
+    if not current_user.stripe_customer_id:
+        return {"plan_id": "free", "status": "none"}
+    try:
+        info = get_subscription_info(current_user.stripe_customer_id)
+        if not info:
+            return {"plan_id": "free", "status": "none"}
+        return info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stripe subscription fetch failed: {str(e)}")
+
+@app.post("/billing/portal")
+def create_billing_portal(
+    current_user: User = Depends(get_current_user),
+):
+    """Create a Stripe Customer Portal session."""
+    if not current_user.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="No Stripe customer record")
+    try:
+        portal = create_portal_session(
+            customer_id=current_user.stripe_customer_id,
+            return_url=os.getenv("NEXT_PUBLIC_APP_URL", "http://localhost:3000") + "/dashboard/settings",
+        )
+        return {"portal_url": portal.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Portal session failed: {str(e)}")
+
+@app.post("/billing/webhook")
+async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+    """Handle Stripe webhooks (subscriptions created, invoices paid, cancellations)."""
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+    try:
+        event = construct_event(payload, sig_header)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    
+    if event["type"] == "checkout.session.completed":
+        session = event["data"]["object"]
+        customer_id = session.get("customer")
+        subscription_id = session.get("subscription")
+        plan_id = session.get("metadata", {}).get("plan_id", "starter")
+        lookup_email = session.get("customer_email")
+        # Update user
+        user = db.query(User).filter(User.email == lookup_email).first()
+        if user:
+            user.stripe_customer_id = customer_id
+            existing = db.query(Subscription).filter(Subscription.user_id == user.id).first()
+            if existing:
+                existing.stripe_subscription_id = subscription_id
+                existing.plan_id = plan_id
+                existing.status = "active"
+                existing.amount = 149.00 if plan_id == "pro" else 49.00
+            else:
+                new_sub = Subscription(
+                    user_id=user.id,
+                    plan_id=plan_id,
+                    stripe_subscription_id=subscription_id,
+                    status="active",
+                    amount=149.00 if plan_id == "pro" else 49.00,
+                )
+                db.add(new_sub)
+            db.commit()
+
+    elif event["type"] == "invoice.payment_failed":
+        invoice = event["data"]["object"]
+        customer_id = invoice.get("customer")
+        user = db.query(User).filter(User.stripe_customer_id == customer_id).first()
+        if user:
+            sub = db.query(Subscription).filter(Subscription.user_id == user.id).first()
+            if sub:
+                sub.status = "past_due"
+                db.commit()
+
+    return {"status": "ok"}
+
+# ─── Subscription gating helper ───
+
+def get_user_plan(db: Session, user: User) -> str:
+    """Return 'free', 'starter', 'pro', or 'enterprise' based on active Stripe sub."""
+    if not user.stripe_customer_id:
+        return "free"
+    sub = db.query(Subscription).filter(
+        Subscription.user_id == user.id,
+        Subscription.status == "active"
+    ).first()
+    if not sub:
+        return "free"
+    return sub.plan_id
+
+def enforce_plan_limit(db: Session, user: User, plan_id: str, generation_type: str = "content"):
+    """Raise HTTPException if user has exceeded their plan limits."""
+    limits = {
+        "free": {"brands": 0, "pieces": 0, "images": 0},
+        "starter": {"brands": 5, "pieces": 100, "images": 0},
+        "pro": {"brands": -1, "pieces": -1, "images": -1},
+    }.get(plan_id, {"brands": 0, "pieces": 0, "images": 0})
+
+    # Count brands owned
+    if limits["brands"] >= 0:
+        brand_count = db.query(Brand).filter(Brand.user_id == user.id).count()
+        if brand_count >= limits["brands"]:
+            raise HTTPException(status_code=403, detail=f"Plan limit: {limits['brands']} brands max. Upgrade to Pro.")
+
+    # Count content pieces this month
+    if limits["pieces"] >= 0:
+        from datetime import datetime, timedelta
+        start_of_month = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        piece_count = db.query(ContentPiece).filter(
+            ContentPiece.user_id == user.id,
+            ContentPiece.created_at >= start_of_month
+        ).count()
+        if piece_count >= limits["pieces"]:
+            raise HTTPException(status_code=403, detail=f"Plan limit: {limits['pieces']} pieces/mo. Upgrade for more.")
+
+    # Image blocks
+    if generation_type == "image" and limits["images"] == 0:
+        raise HTTPException(status_code=403, detail="Image generation requires Starter or Pro plan.")
+
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# ─── Analytics ───
+
+@app.get("/analytics")
+def get_analytics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return content generation analytics for the current user."""
+    from datetime import datetime, timedelta
+
+    now = datetime.utcnow()
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Count by type
+    by_type = {}
+    for row in db.query(ContentPiece.content_type, db.func.count(ContentPiece.id)).filter(
+        ContentPiece.user_id == current_user.id
+    ).group_by(ContentPiece.content_type).all():
+        by_type[row[0]] = row[1]
+
+    # Count by status
+    by_status = {}
+    for row in db.query(ContentPiece.status, db.func.count(ContentPiece.id)).filter(
+        ContentPiece.user_id == current_user.id
+    ).group_by(ContentPiece.status).all():
+        by_status[row[0]] = row[1]
+
+    # Last 7 days
+    daily = []
+    for i in range(7):
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        count = db.query(db.func.count(ContentPiece.id)).filter(
+            ContentPiece.user_id == current_user.id,
+            ContentPiece.created_at >= day_start,
+            ContentPiece.created_at < day_end
+        ).scalar() or 0
+        daily.insert(0, {"date": day_start.strftime("%Y-%m-%d"), "count": count})
+
+    # Last 6 months
+    monthly = []
+    for i in range(6):
+        month = now - timedelta(days=i * 30)
+        month_start = month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_end = (month_start + timedelta(days=32)).replace(day=1)
+        count = db.query(db.func.count(ContentPiece.id)).filter(
+            ContentPiece.user_id == current_user.id,
+            ContentPiece.created_at >= month_start,
+            ContentPiece.created_at < month_end
+        ).scalar() or 0
+        monthly.insert(0, {
+            "month": month_start.strftime("%b %Y"),
+            "count": count
+        })
+
+    # Recent activity (last 10)
+    recent = db.query(ContentPiece).filter(
+        ContentPiece.user_id == current_user.id
+    ).order_by(ContentPiece.created_at.desc()).limit(10).all()
+
+    return {
+        "summary": {
+            "total": sum(by_type.values(), 0),
+            "this_month": sum(1 for p in db.query(ContentPiece).filter(
+                ContentPiece.user_id == current_user.id,
+                ContentPiece.created_at >= start_of_month
+            ).all()),
+            "by_type": by_type,
+            "by_status": by_status,
+        },
+        "daily": daily,
+        "monthly": monthly,
+        "recent": [
+            {
+                "id": r.id,
+                "title": r.title,
+                "type": r.content_type,
+                "status": r.status,
+                "created_at": r.created_at.isoformat(),
+            }
+            for r in recent
+        ],
+    }
+

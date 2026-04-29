@@ -39,8 +39,20 @@ export const content = {
   list: () => api.get('/content'),
 };
 
+export const billing = {
+  checkout: (plan_id: string) => api.post('/billing/checkout', { plan_id }),
+  subscription: () => api.get('/billing/subscription'),
+  portal: () => api.post('/billing/portal'),
+};
+
 export const subscriptions = {
   plans: () => api.get('/subscriptions/plans'),
+};
+
+export const billing = {
+  checkout: (plan_id: string) => api.post('/billing/checkout', { plan_id }),
+  subscription: () => api.get('/billing/subscription'),
+  portal: () => api.post('/billing/portal'),
 };
 
 export default api;
