@@ -69,9 +69,9 @@ tasks:
 - [x] Environment config: .env for API keys, Stripe, DB URL (.env.example)
 - [x] Frontend build fixes (duplicate billing export, duplicate generate_image_endpoint)
 - [x] Seed script: demo user + demo brand
-- [ ] GitHub repo push + README for reproducibility
+- [x] GitHub repo push + README for reproducibility
 
-## HOUR 9: Growth / Monetization
+## ✅ HOUR 9: Growth / Monetization
 
 tasks:
 - [x] **Waitlist landing page (public, no auth)** — Rewrite `frontend/app/page.tsx` with waitlist form, features grid, pricing cards. Add `POST /waitlist`, `GET /waitlist/count`, `GET /waitlist/admin` to `backend/main.py`. Add `WaitlistEntry` model to `backend/models.py`.
