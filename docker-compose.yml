@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: contentforge-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///app/data/contentforge.db
+      - SECRET_KEY=${SECRET_KEY:-contentforge-dev-secret-key}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_PRICE_STARTER=${STRIPE_PRICE_STARTER:-}
+      - STRIPE_PRICE_PRO=${STRIPE_PRICE_PRO:-}
+      - NEXT_PUBLIC_APP_URL=${APP_URL:-http://localhost:3000}
+      - PINTEREST_CLIENT_ID=${PINTEREST_CLIENT_ID:-}
+      - PINTEREST_CLIENT_SECRET=${PINTEREST_CLIENT_SECRET:-}
+      - PINTEREST_REDIRECT_URI=${PINTEREST_REDIRECT_URI:-http://localhost:3000/dashboard/settings}
+      - WP_DEFAULT_SITE_URL=${WP_DEFAULT_SITE_URL:-}
+      - WP_DEFAULT_USERNAME=${WP_DEFAULT_USERNAME:-}
+      - WP_DEFAULT_APP_PASSWORD=${WP_DEFAULT_APP_PASSWORD:-}
+      - LM_STUDIO_URL=${LM_STUDIO_URL:-http://localhost:1234/v1/chat/completions}
+      - COMFYUI_URL=${COMFYUI_URL:-http://localhost:8188}
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/static/images:/app/static/images
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: contentforge-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${SECRET_KEY:-contentforge-dev-secret-key}
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    container_name: contentforge-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./infra/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./backend/static/images:/var/www/images:ro
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend

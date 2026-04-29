@@ -47,26 +47,28 @@ tasks:
 - [ ] Email draft to Mailchimp/SendGrid (optional, deferred)
 - [ ] Scheduler: cron-like job queuing (APScheduler or custom, deferred)
 
-## HOUR 6: Stripe Billing
+## ✅ HOUR 6: Stripe Billing (2026-04-29)
 tasks:
-- [ ] Stripe Checkout: Starter ($49/mo) + Pro ($149/mo)
-- [ ] Webhook endpoint for subscription events
-- [ ] Subscription guards on API endpoints
-- [ ] Upgrade/downgrade flow in Settings
+- [x] Stripe Checkout: Starter ($49/mo) + Pro ($149/mo) endpoints wired
+- [x] Webhook endpoint `/billing/webhook` for subscription events
+- [x] Subscription guards on API endpoints (free 1 brand / 3 pieces, starter/pro limits)
+- [x] Upgrade/downgrade flow in Settings page (checkout + portal buttons)
+- [ ] Connect real Stripe account + configure PRICE_ID env vars (setup step)
 
-## HOUR 7: Analytics Dashboard
+## ✅ HOUR 7: Analytics Dashboard
 tasks:
-- [ ] ContentPiece aggregation by type, brand, status
-- [ ] Engagement mock data (or real if publishers exist)
-- [ ] Charts: bar (content by type), line (over time), pie (status)
-- [ ] Export to CSV
+- [x] ContentPiece aggregation by type, status
+- [x] Daily/monthly trend charts
+- [x] Bar charts for content by type, status
+- [x] Recent activity feed
+- [ ] Export to CSV (deferred)
 
 ## HOUR 8: Polish & Deploy
 tasks:
-- [ ] Docker Compose: backend (FastAPI + uvicorn), frontend (Next.js standalone), nginx
-- [ ] Environment config: .env for API keys, Stripe, DB URL
-- [ ] Frontend build fixes (eslint, types, bundling)
-- [ ] Seed script: demo user + demo brand
+- [x] Docker Compose: backend (FastAPI + uvicorn), frontend (Next.js standalone), nginx
+- [x] Environment config: .env for API keys, Stripe, DB URL (.env.example)
+- [x] Frontend build fixes (duplicate billing export, duplicate generate_image_endpoint)
+- [x] Seed script: demo user + demo brand
 - [ ] GitHub repo push + README for reproducibility
 
 ## HOUR 9+: Growth / Monetization

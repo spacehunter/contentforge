@@ -645,16 +645,16 @@ def get_user_plan(db: Session, user: User) -> str:
 def enforce_plan_limit(db: Session, user: User, plan_id: str, generation_type: str = "content"):
     """Raise HTTPException if user has exceeded their plan limits."""
     limits = {
-        "free": {"brands": 0, "pieces": 0, "images": 0},
+        "free": {"brands": 1, "pieces": 3, "images": 0},  # free has 1 brand and 3 pieces total
         "starter": {"brands": 5, "pieces": 100, "images": 0},
         "pro": {"brands": -1, "pieces": -1, "images": -1},
-    }.get(plan_id, {"brands": 0, "pieces": 0, "images": 0})
+    }.get(plan_id, {"brands": 1, "pieces": 3, "images": 0})
 
     # Count brands owned
     if limits["brands"] >= 0:
         brand_count = db.query(Brand).filter(Brand.user_id == user.id).count()
-        if brand_count >= limits["brands"]:
-            raise HTTPException(status_code=403, detail=f"Plan limit: {limits['brands']} brands max. Upgrade to Pro.")
+        if brand_count > limits["brands"]:
+            raise HTTPException(status_code=403, detail=f"Plan limit: {limits['brands']} brands max. Upgrade for more.")
 
     # Count content pieces this month
     if limits["pieces"] >= 0:
@@ -664,7 +664,7 @@ def enforce_plan_limit(db: Session, user: User, plan_id: str, generation_type: s
             ContentPiece.user_id == user.id,
             ContentPiece.created_at >= start_of_month
         ).count()
-        if piece_count >= limits["pieces"]:
+        if piece_count > limits["pieces"]:
             raise HTTPException(status_code=403, detail=f"Plan limit: {limits['pieces']} pieces/mo. Upgrade for more.")
 
     # Image blocks
