@@ -3,13 +3,18 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const searchParams = useSearchParams();
-  const initialRef = searchParams?.get('ref') || '';
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [form, setForm] = useState({ email: '', password: '', name: '', referral_code: initialRef });
+  const [form, setForm] = useState({ email: '', password: '', name: '', referral_code: '' });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const ref = new URLSearchParams(window.location.search).get('ref') || '';
+      setForm((f) => ({ ...f, referral_code: ref }));
+    }
+  }, []);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
